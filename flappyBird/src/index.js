@@ -29,14 +29,10 @@ const config = {
     default: "arcade",
     arcade: {
       //gravity: { y: 400 },
-      debug: true,
+     // debug: true,
     },
   },
 
-  //scene: [PlayScene]
- // b scene: [new PlayScene(SHARED_CONFIG)],
-    //scene: [new MenuScene(SHARED_CONFIG), new PlayScene(SHARED_CONFIG)]
-    //scene: [PreloadScene, new MenuScene(SHARED_CONFIG), new PlayScene(SHARED_CONFIG)]
   scene: initScenes()
   };
 

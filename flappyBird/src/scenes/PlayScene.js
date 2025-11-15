@@ -10,13 +10,7 @@ class PlayScene extends BaseScene {
     this.bird = null;
     this.pipes = null;
     this.isPaused = false;
-    this.collectibles = null;
-    this.collectibleTypes = []; // Will be filled with a–z later
     this.pipeVerticalDistance = 200; // or your existing gap setting
-
-    //this.pipeHorizontalDistance = 0;
-    // this.pipeVerticalDistanceRange = [150, 250];
-    // this.pipeHorizontalDistanceRange = [500, 550];
     this.flapVelocity = 300;
     this.score = 0;
     this.scoreText = "";
@@ -36,23 +30,25 @@ class PlayScene extends BaseScene {
         pipeVerticalDistanceRange: [70, 100],
       },
     };
+     this.collectibles = null;
+this.collectibleTypes = []; // will hold 'A' to 'Z'
+  for (let i = 65; i <= 90; i++) {
+    this.collectibleTypes.push(String.fromCharCode(i));
+  }
   }
 
   create() {
     //this.currentDifficulty = 'hard';
     this.currentDifficulty = "easy";
     super.create();
-    this.collectibleTypes = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-
     this.createBG();
     this.createBird();
+     this.createCollectibles();
     this.createPipes();
     this.createColliders();
     this.createScore();
     this.createPause();
     this.handleInputs();
-    this.screenCenter = [this.config.width / 2, this.config.height / 2];
-    this.fontOptions = { fontSize: "32px", fill: "#000" };
     this.listenToEvents();
     this.anims.create({
       key: "fly",
@@ -67,6 +63,7 @@ class PlayScene extends BaseScene {
 
     this.bird.play("fly");
     this.createCollectibles();
+
   }
 
   createBG() {
@@ -83,24 +80,8 @@ class PlayScene extends BaseScene {
     this.bird.body.gravity.y = 600;
     this.bird.setCollideWorldBounds(true);
   }
-  createPipes() {
-    this.pipes = this.physics.add.group();
+  
 
-    for (let i = 0; i < PIPES_TO_RENDER; i++) {
-      const upperPipe = this.pipes
-        .create(0, 0, "pipe")
-        .setImmovable(true)
-        .setOrigin(0, 1);
-      const lowerPipe = this.pipes
-        .create(0, 0, "pipe")
-        .setImmovable(true)
-        .setOrigin(0, 0);
-
-      this.placePipe(upperPipe, lowerPipe);
-    }
-
-    this.pipes.setVelocityX(-200);
-  }
 
   createColliders() {
     this.physics.add.collider(this.bird, this.pipes, this.gameOver, null, this);
@@ -194,6 +175,45 @@ class PlayScene extends BaseScene {
       this.gameOver();
     }
   }
+createPipes() {
+    this.pipes = this.physics.add.group();
+
+    for (let i = 0; i < PIPES_TO_RENDER; i++) {
+      const upperPipe = this.pipes
+        .create(0, 0, "pipe")
+        .setImmovable(true)
+        .setOrigin(0, 1);
+      const lowerPipe = this.pipes
+        .create(0, 0, "pipe")
+        .setImmovable(true)
+        .setOrigin(0, 0);
+
+      this.placePipe(upperPipe, lowerPipe);
+    }
+
+    this.pipes.setVelocityX(-200);
+  }
+
+  createCollectibles() {
+  this.collectibles = this.physics.add.group();
+
+  this.physics.add.overlap(
+    this.bird,
+    this.collectibles,
+    (bird, collectible) => {
+      collectible.destroy();
+      // OPTIONAL: you can add letter-collection score logic here
+           // ⭐ Add +10 score when collecting an image
+      this.score += 10;
+      this.scoreText.setText(`Score: ${this.score}`);
+
+      this.saveBestScore();
+    },
+    null,
+    this
+  );
+}
+
   placePipe(uPipe, lPipe) {
     const difficulty = this.difficulties[this.currentDifficulty];
     const rightMostX = this.getRightMostPipe();
@@ -215,8 +235,34 @@ class PlayScene extends BaseScene {
 
     lPipe.x = uPipe.x;
     lPipe.y = uPipe.y + pipeVerticalDistance;
+
+      // NEW — add this after placing pipes
+  const gapCenterY = uPipe.y + (pipeVerticalDistance / 2);
+  this.placeCollectible(uPipe.x + 50, gapCenterY);
   }
+
+  placeCollectible(x, y) {
+  const randomLetter = Phaser.Utils.Array.GetRandom(this.collectibleTypes);
+
+  const collectible = this.collectibles
+    .create(x, y, randomLetter)
+    .setScale(0.12)
+    .setOrigin(0.5);
+
+  collectible.body.allowGravity = false;
+  collectible.body.velocity.x = -200; // move with pipes
+}
+
+
   recyclePipes() {
+
+     // ✅ 1. Remove old collectibles that moved off screen
+  this.collectibles.getChildren().forEach((c) => {
+    if (c.getBounds().right <= 0) {
+      c.destroy();
+    }
+  });
+
     const tempPipes = [];
     this.pipes.getChildren().forEach((pipe) => {
       if (pipe.getBounds().right <= 0) {
@@ -279,17 +325,6 @@ class PlayScene extends BaseScene {
   increaseScore() {
     this.score++;
     this.scoreText.setText(`Score: ${this.score}`);
-  }
-  createCollectibles() {
-    this.collectibles = this.physics.add.group();
-
-    // Spawn random letters every 3 seconds
-    this.time.addEvent({
-      delay: 3000,
-      callback: this.spawnCollectible,
-      callbackScope: this,
-      loop: true,
-    });
   }
 }
 
