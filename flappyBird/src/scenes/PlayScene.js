@@ -5,16 +5,18 @@ const PIPES_TO_RENDER = 4;
 
 class PlayScene extends BaseScene {
   constructor(config) {
-    super("PlayScene", config); //
+    super("PlayScene", config);
     this.config = config;
+
     this.bird = null;
     this.pipes = null;
     this.isPaused = false;
-    this.pipeVerticalDistance = 200; // or your existing gap setting
+    this.pipeVerticalDistance = 200;
     this.flapVelocity = 300;
     this.score = 0;
     this.scoreText = "";
     this.currentDifficulty = "easy";
+
     this.difficulties = {
       easy: {
         pipeHorizontalDistanceRange: [300, 350],
@@ -26,48 +28,80 @@ class PlayScene extends BaseScene {
       },
       hard: {
         pipeHorizontalDistanceRange: [250, 310],
-        //pipeVerticalDistanceRange: [120, 150]
         pipeVerticalDistanceRange: [70, 100],
       },
     };
-     this.collectibles = null;
-this.collectibleTypes = []; // will hold 'A' to 'Z'
-  for (let i = 65; i <= 90; i++) {
-    this.collectibleTypes.push(String.fromCharCode(i));
-  }
+
+    this.collectibles = null;
+    this.collectibleTypes = [];
+    for (let i = 65; i <= 90; i++) {
+      this.collectibleTypes.push(String.fromCharCode(i));
+    }
   }
 
   create() {
-    //this.currentDifficulty = 'hard';
     this.currentDifficulty = "easy";
+
+    // ✅ RESET collectible images every restart
+    this.collectibleTypes = [];
+    for (let i = 65; i <= 90; i++) {
+      this.collectibleTypes.push(String.fromCharCode(i));
+    }
+
+    // audio context unlock
+    if (
+      this.sound &&
+      this.sound.context &&
+      this.sound.context.state === "suspended"
+    ) {
+      this.sound.context.resume().catch(() => {});
+    }
+
+    // bgMusic
+    this.bgMusic = this.sound.add("bgMusic", { loop: true, volume: 0.2 });
+    try {
+      if (!this.bgMusic.isPlaying) this.bgMusic.play();
+    } catch (e) {}
+
+    // 🔥 ADD THIS **RIGHT HERE**
+    this.letterSounds = {};
+    if (this.collectibleTypes) {
+      this.collectibleTypes.forEach((letter) => {
+        const key = letter + "_sound";
+
+        if (this.cache.audio.exists(key)) {
+          this.letterSounds[letter] = this.sound.add(key);
+        }
+      });
+    }
+    // 🔥 END ADDITION
+
     super.create();
     this.createBG();
     this.createBird();
-     this.createCollectibles();
+    this.createCollectibles();
     this.createPipes();
     this.createColliders();
     this.createScore();
     this.createPause();
     this.handleInputs();
     this.listenToEvents();
+
+    // this.anims.create({ key: "fly",...});
     this.anims.create({
       key: "fly",
       frames: this.anims.generateFrameNumbers("bird", { start: 9, end: 15 }),
-      // 24 fps default, it will play animation consisting of 24 frames in 1 second
-      // in case of framerate 2 and sprite of 8 frames animations will play in
-      // 4 sec; 8 / 2 = 4
       frameRate: 8,
-      // repeat infinitely
       repeat: -1,
     });
-
     this.bird.play("fly");
-    this.createCollectibles();
-
   }
 
   createBG() {
-    this.add.image(0, 0, "sky").setOrigin(0);
+    // BaseScene.create already added sky; keep this if you want a separate or layered background
+    // This call is harmless if the same key is used.
+    // If you want only one sky image, you can remove one of them.
+    // this.add.image(0, 0, "sky").setOrigin(0);
   }
 
   createBird() {
@@ -80,12 +114,11 @@ this.collectibleTypes = []; // will hold 'A' to 'Z'
     this.bird.body.gravity.y = 600;
     this.bird.setCollideWorldBounds(true);
   }
-  
-
 
   createColliders() {
     this.physics.add.collider(this.bird, this.pipes, this.gameOver, null, this);
   }
+
   createScore() {
     this.score = 0;
     const bestScore = localStorage.getItem("bestScore");
@@ -105,19 +138,44 @@ this.collectibleTypes = []; // will hold 'A' to 'Z'
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
   }
+
   update() {
     this.checkGameStatus();
     this.recyclePipes();
   }
 
+  // Robust resume handler — resumes music and starts countdown
   listenToEvents() {
- 
-    if (this.pauseEvent) {
-      return;
-    }
+    if (this.pauseEvent) return;
+
     this.pauseEvent = this.events.on("resume", () => {
-      this.isPaused = true; //
+      // Freeze gameplay during countdown
+      this.physics.pause();
+      this.isPaused = true;
+
+      // small delayed resume to avoid race conditions
+      try {
+        if (this._resumeDelayedCall) {
+          this._resumeDelayedCall.remove(false);
+        }
+      } catch (e) {}
+
+      this._resumeDelayedCall = this.time.delayedCall(50, () => {
+        try {
+          if (this.bgMusic && this.bgMusic.resume) {
+            this.bgMusic.resume(); // prefer resume
+          } else if (this.bgMusic && this.bgMusic.play) {
+            this.bgMusic.play(); // fallback
+          }
+        } catch (err) {
+          // ignore
+        }
+      });
+
+      // show countdown and block flapping until finished
+      this.isPaused = true;
       this.initialTime = 3;
+      if (this.countDownText) this.countDownText.destroy();
       this.countDownText = this.add
         .text(
           ...this.screenCenter,
@@ -125,57 +183,77 @@ this.collectibleTypes = []; // will hold 'A' to 'Z'
           this.fontOptions
         )
         .setOrigin(0.5);
-      // this.physics.pause();//
 
+      if (this.timedEvent) this.timedEvent.remove(false);
       this.timedEvent = this.time.addEvent({
         delay: 1000,
-        //callback: () => console.log(this.initialTime--),
         callback: this.countDown,
         callbackScope: this,
         loop: true,
       });
     });
   }
+
   countDown() {
     this.initialTime--;
-    this.countDownText.setText("Fly in: " + this.initialTime);
+    if (this.countDownText)
+      this.countDownText.setText("Fly in: " + this.initialTime);
     if (this.initialTime <= 0) {
       this.isPaused = false;
-      this.countDownText.setText("");
+      if (this.countDownText) this.countDownText.setText("");
       this.physics.resume();
-      this.isPaused = false;
-      this.timedEvent.remove();
+      if (this.timedEvent) this.timedEvent.remove();
     }
   }
+
   createPause() {
     this.isPaused = false;
     const pauseButton = this.add
       .image(this.config.width - 10, this.config.height - 10, "pause")
       .setScale(3)
       .setOrigin(1)
-      .setInteractive(); //added to make the button work
+      .setInteractive();
 
     pauseButton.on("pointerdown", () => {
-      //this.physics.pause();
       this.isPaused = true;
+
+      // Resume audio context if needed
+      if (this.sound.context.state === "suspended") {
+        this.sound.context.resume();
+      }
+
+      // pause BG music
+      try {
+        if (this.bgMusic && this.bgMusic.isPlaying) {
+          this.bgMusic.pause();
+        }
+      } catch (e) {}
+
+      // pause scene and launch PauseScene with config so PauseScene knows sizes
       this.scene.pause();
-      this.scene.launch("PauseScene", this.config); //added to make the config work
+      this.scene.launch("PauseScene", { config: this.config });
     });
   }
 
   checkGameStatus() {
-    if (this.spaceKey.isDown) {
+    //  Prevent crash if bird is null or destroyed
+    if (!this.bird || !this.bird.active) return;
+
+    // flap control
+    if (this.spaceKey && this.spaceKey.isDown) {
       this.flap();
     }
-    // if (this.bird.y > this.config.height || this.bird.y < -this.bird.height)
-    if (
-      this.bird.getBounds().bottom >= this.config.height ||
-      this.bird.y <= 0
-    ) {
+
+    // getBounds() ONLY after confirming bird exists
+    const birdBounds = this.bird.getBounds();
+
+    // check ground / top collision
+    if (birdBounds.bottom >= this.config.height || birdBounds.top <= 0) {
       this.gameOver();
     }
   }
-createPipes() {
+
+  createPipes() {
     this.pipes = this.physics.add.group();
 
     for (let i = 0; i < PIPES_TO_RENDER; i++) {
@@ -195,24 +273,50 @@ createPipes() {
   }
 
   createCollectibles() {
-  this.collectibles = this.physics.add.group();
+    this.collectibles = this.physics.add.group();
 
-  this.physics.add.overlap(
-    this.bird,
-    this.collectibles,
-    (bird, collectible) => {
-      collectible.destroy();
-      // OPTIONAL: you can add letter-collection score logic here
-           // ⭐ Add +10 score when collecting an image
-      this.score += 10;
-      this.scoreText.setText(`Score: ${this.score}`);
+    this.physics.add.overlap(
+      this.bird,
+      this.collectibles,
+      (bird, collectible) => {
+        const letter = collectible.texture.key;
+        const soundObj = this.letterSounds[letter];
 
-      this.saveBestScore();
-    },
-    null,
-    this
-  );
-}
+        // 🔥 1. Duck (lower) the music EVERY TIME a collectible is hit
+        if (this.bgMusic) {
+          this.bgMusic.setVolume(0.03); // lower bg music
+
+          this.time.delayedCall(500, () => {
+            if (this.bgMusic) {
+              this.bgMusic.setVolume(0.2); // restore volume
+            }
+          });
+        }
+
+        // 🔥 2. PLAY LETTER SOUND
+        if (this.sound.context.state === "suspended") {
+          this.sound.context.resume();
+        }
+
+        if (soundObj) {
+          soundObj.play();
+        } else {
+          this.sound.play(letter + "_sound");
+        }
+
+        // 🔥 Destroy collectible safely
+        collectible.disableBody(true, true);
+        this.time.delayedCall(150, () => collectible.destroy());
+
+        // 🔥 Score
+        this.score += 10;
+        this.scoreText.setText(`Score: ${this.score}`);
+        this.saveBestScore();
+      },
+      null,
+      this
+    );
+  }
 
   placePipe(uPipe, lPipe) {
     const difficulty = this.difficulties[this.currentDifficulty];
@@ -222,7 +326,7 @@ createPipes() {
       ...difficulty.pipeVerticalDistanceRange
     );
     const pipeVerticalPosition = Phaser.Math.Between(
-      0 + 20,
+      20,
       this.config.height - 20 - pipeVerticalDistance
     );
 
@@ -236,32 +340,51 @@ createPipes() {
     lPipe.x = uPipe.x;
     lPipe.y = uPipe.y + pipeVerticalDistance;
 
-      // NEW — add this after placing pipes
-  const gapCenterY = uPipe.y + (pipeVerticalDistance / 2);
-  this.placeCollectible(uPipe.x + 50, gapCenterY);
+    const gapCenterY = uPipe.y + pipeVerticalDistance / 2;
+    this.placeCollectible(uPipe.x + 50, gapCenterY);
   }
 
+  // placeCollectible(x, y) {
+  //   const randomLetter = Phaser.Utils.Array.GetRandom(this.collectibleTypes);
+
+  //   const collectible = this.collectibles
+  //     .create(x, y, randomLetter)
+  //     .setScale(0.12)
+  //     .setOrigin(0.5);
+
+  //   collectible.body.allowGravity = false;
+  //   collectible.body.velocity.x = -200;
+  // }
   placeCollectible(x, y) {
-  const randomLetter = Phaser.Utils.Array.GetRandom(this.collectibleTypes);
+    // 🔥 If no letters left → stop creating collectibles
+    if (this.collectibleTypes.length === 0) {
+      return;
+    }
 
-  const collectible = this.collectibles
-    .create(x, y, randomLetter)
-    .setScale(0.12)
-    .setOrigin(0.5);
+    // 🔥 Pick a random **index** instead of value
+    const index = Phaser.Math.Between(0, this.collectibleTypes.length - 1);
+    const randomLetter = this.collectibleTypes[index];
 
-  collectible.body.allowGravity = false;
-  collectible.body.velocity.x = -200; // move with pipes
-}
+    // 🔥 REMOVE that letter so it can never appear again
+    this.collectibleTypes.splice(index, 1);
 
+    const collectible = this.collectibles
+      .create(x, y, randomLetter)
+      .setScale(0.12)
+      .setOrigin(0.5);
+
+    collectible.body.allowGravity = false;
+    collectible.body.velocity.x = -200;
+  }
 
   recyclePipes() {
+    if (!this.collectibles || !this.pipes) return;
 
-     // ✅ 1. Remove old collectibles that moved off screen
-  this.collectibles.getChildren().forEach((c) => {
-    if (c.getBounds().right <= 0) {
-      c.destroy();
-    }
-  });
+    this.collectibles.getChildren().forEach((c) => {
+      if (c.getBounds().right <= 0) {
+        c.destroy();
+      }
+    });
 
     const tempPipes = [];
     this.pipes.getChildren().forEach((pipe) => {
@@ -276,24 +399,20 @@ createPipes() {
       }
     });
   }
+
   getRightMostPipe() {
     let rightMostX = 0;
-
     this.pipes.getChildren().forEach(function (pipe) {
       rightMostX = Math.max(pipe.x, rightMostX);
     });
-
     return rightMostX;
   }
-  increaseDifficulty() {
-    if (this.score === 1) {
-      this.currentDifficulty = "normal";
-    }
 
-    if (this.score === 3) {
-      this.currentDifficulty = "hard";
-    }
+  increaseDifficulty() {
+    if (this.score === 1) this.currentDifficulty = "normal";
+    if (this.score === 3) this.currentDifficulty = "hard";
   }
+
   saveBestScore() {
     const bestScoreText = localStorage.getItem("bestScore");
     const bestScore = bestScoreText && parseInt(bestScoreText, 10);
@@ -302,10 +421,18 @@ createPipes() {
       localStorage.setItem("bestScore", this.score);
     }
   }
+
   gameOver() {
     this.physics.pause();
     this.bird.setTint(0xee4824);
     this.saveBestScore();
+
+    // IMPORTANT FIX — stop old bgMusic before restart
+    if (this.bgMusic) {
+      this.bgMusic.stop();
+      this.bgMusic.destroy();
+      this.bgMusic = null;
+    }
 
     this.time.addEvent({
       delay: 1000,
@@ -317,11 +444,10 @@ createPipes() {
   }
 
   flap() {
-    if (this.isPaused) {
-      return;
-    }
+    if (this.isPaused) return;
     this.bird.body.velocity.y = -this.flapVelocity;
   }
+
   increaseScore() {
     this.score++;
     this.scoreText.setText(`Score: ${this.score}`);
