@@ -1,42 +1,3 @@
-// import Phaser from "phaser";
-// import PlayScene from "./scenes/PlayScene";
-// import MenuScene from './scenes/MenuScene';
-// import PreloadScene from './scenes/PreloadScene';
-// import ScoreScene from "./scenes/ScoreScene";
-// import PauseScene from "./scenes/PauseScene"
-
-// //const WIDTH = 800;
-// const WIDTH = 400;
-// const HEIGHT = 600;
-// const BIRD_POSITION = { x: WIDTH * 0.1, y: HEIGHT / 2 };
-
-// const SHARED_CONFIG = {
-//   width: WIDTH,
-//   height: HEIGHT,
-//   startPosition: BIRD_POSITION,
-// };
-
-// const Scenes = [PreloadScene, MenuScene, ScoreScene, PlayScene,PauseScene];
-// const createScene = Scene => new Scene(SHARED_CONFIG)
-// const initScenes = () => Scenes.map(createScene)
-
-// const config = {
-//   type: Phaser.AUTO,
-
-//   ...SHARED_CONFIG,
-//   pixelArt: true,
-//   physics: {
-//     default: "arcade",
-//     arcade: {
-//       //gravity: { y: 400 },
-    
-//     },
-//   },
-
-//   scene: initScenes()
-//   };
-
-// new Phaser.Game(config);
 
 import Phaser from "phaser";
 import PlayScene from "./scenes/PlayScene";
@@ -45,6 +6,14 @@ import PreloadScene from './scenes/PreloadScene';
 import ScoreScene from "./scenes/ScoreScene";
 import PauseScene from "./scenes/PauseScene";
 
+console.log({
+  PreloadScene,
+  MenuScene,
+  ScoreScene,
+  PlayScene,
+  PauseScene
+});
+
 const WIDTH = 400;
 const HEIGHT = 600;
 const BIRD_POSITION = { x: WIDTH * 0.1, y: HEIGHT / 2 };
@@ -52,34 +21,39 @@ const BIRD_POSITION = { x: WIDTH * 0.1, y: HEIGHT / 2 };
 const SHARED_CONFIG = {
   width: WIDTH,
   height: HEIGHT,
-  parent: "game-container",
   startPosition: BIRD_POSITION,
 };
 
+// scenes array
 const Scenes = [PreloadScene, MenuScene, ScoreScene, PlayScene, PauseScene];
 const createScene = Scene => new Scene(SHARED_CONFIG);
 const initScenes = () => Scenes.map(createScene);
 
 const config = {
   type: Phaser.AUTO,
+  parent: 'phaser-app',    // attach canvas to the div
+  // width: WIDTH,
+  // height: HEIGHT,
+  width: 400,
+  height: 600,
+  pixelArt: true,
 
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.FIT,          // FIT keeps aspect ratio and fits inside the container
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    //parent: "phaser-app",
+    // width: WIDTH,
+    // height: HEIGHT
+    width: 400,
+    height: 600
   },
-
-  pixelArt: true,
 
   physics: {
     default: "arcade",
-    arcade: {},
+    arcade: { debug: false },
   },
 
-  scene: initScenes(),
+  scene: initScenes()
 };
 
-const game = new Phaser.Game(config);
-
-window.addEventListener("resize", () => {
-  game.scale.resize(window.innerWidth, window.innerHeight);
-});
+new Phaser.Game(config);

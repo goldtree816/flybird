@@ -17,6 +17,7 @@ class PlayScene extends BaseScene {
     this.scoreText = "";
     this.currentDifficulty = "easy";
 
+    // temporary placeholders — will be recalculated AFTER scaleMultiplier exists
     this.difficulties = {
       easy: {
         pipeHorizontalDistanceRange: [300, 350],
@@ -32,6 +33,7 @@ class PlayScene extends BaseScene {
       },
     };
 
+    // A–Z collectibles
     this.collectibles = null;
     this.collectibleTypes = [];
     for (let i = 65; i <= 90; i++) {
@@ -42,41 +44,43 @@ class PlayScene extends BaseScene {
   create() {
     this.currentDifficulty = "easy";
 
-    // ✅ RESET collectible images every restart
+    // RESET letters
     this.collectibleTypes = [];
     for (let i = 65; i <= 90; i++) {
       this.collectibleTypes.push(String.fromCharCode(i));
     }
 
-    // audio context unlock
-    if (
-      this.sound &&
-      this.sound.context &&
-      this.sound.context.state === "suspended"
-    ) {
+    // Unlock audio context if needed
+    if (this.sound?.context?.state === "suspended") {
       this.sound.context.resume().catch(() => {});
     }
 
-    // bgMusic
+    // Music
     this.bgMusic = this.sound.add("bgMusic", { loop: true, volume: 0.2 });
-    try {
-      if (!this.bgMusic.isPlaying) this.bgMusic.play();
-    } catch (e) {}
+    try { if (!this.bgMusic.isPlaying) this.bgMusic.play(); } catch (e) {}
 
-    // 🔥 ADD THIS **RIGHT HERE**
+    // Load letter sounds
     this.letterSounds = {};
-    if (this.collectibleTypes) {
-      this.collectibleTypes.forEach((letter) => {
-        const key = letter + "_sound";
-
-        if (this.cache.audio.exists(key)) {
-          this.letterSounds[letter] = this.sound.add(key);
-        }
-      });
-    }
-    // 🔥 END ADDITION
+    this.collectibleTypes.forEach((letter) => {
+      const key = letter + "_sound";
+      if (this.cache.audio.exists(key)) {
+        this.letterSounds[letter] = this.sound.add(key);
+      }
+    });
 
     super.create();
+
+    // 🌟 REAL RESPONSIVE SCALING — NOW AT THE TOP OF CREATE
+    const sx = this.game.scale.displaySize.width / this.config.width;
+    const sy = this.game.scale.displaySize.height / this.config.height;
+    this.scaleMultiplier = Math.min(sx, sy);
+    //this.scaleMultiplier = this.game.scale.scaleFactor.x;
+
+
+    // 🔥 FIX: scale all difficulty ranges NOW (not in constructor)
+    this.scaleDifficultyValues();
+
+    // Objects
     this.createBG();
     this.createBird();
     this.createCollectibles();
@@ -87,7 +91,7 @@ class PlayScene extends BaseScene {
     this.handleInputs();
     this.listenToEvents();
 
-    // this.anims.create({ key: "fly",...});
+    // Bird animation
     this.anims.create({
       key: "fly",
       frames: this.anims.generateFrameNumbers("bird", { start: 9, end: 15 }),
@@ -97,22 +101,36 @@ class PlayScene extends BaseScene {
     this.bird.play("fly");
   }
 
-  createBG() {
-    // BaseScene.create already added sky; keep this if you want a separate or layered background
-    // This call is harmless if the same key is used.
-    // If you want only one sky image, you can remove one of them.
-    // this.add.image(0, 0, "sky").setOrigin(0);
+  // 🔥 FIX — scaling of difficulty ranges happens here
+  scaleDifficultyValues() {
+    ["easy", "normal", "hard"].forEach((diff) => {
+      const d = this.difficulties[diff];
+      d.pipeHorizontalDistanceRange = d.pipeHorizontalDistanceRange.map(
+        (v) => v * this.scaleMultiplier
+      );
+      d.pipeVerticalDistanceRange = d.pipeVerticalDistanceRange.map(
+        (v) => v * this.scaleMultiplier
+      );
+    });
   }
+
+  createBG() {}
 
   createBird() {
     this.bird = this.physics.add
-      .sprite(this.config.startPosition.x, this.config.startPosition.y, "bird")
+      .sprite(
+        this.config.startPosition.x * this.scaleMultiplier,
+        this.config.startPosition.y * this.scaleMultiplier,
+        "bird"
+      )
       .setFlipX(true)
-      .setScale(3)
       .setOrigin(0);
 
-    this.bird.body.gravity.y = 600;
+    this.bird.body.gravity.y = 600 * this.scaleMultiplier;
+    this.flapVelocity = 300 * this.scaleMultiplier;
+
     this.bird.setCollideWorldBounds(true);
+    this.bird.setScale(3 * this.scaleMultiplier);
   }
 
   createColliders() {
@@ -122,14 +140,27 @@ class PlayScene extends BaseScene {
   createScore() {
     this.score = 0;
     const bestScore = localStorage.getItem("bestScore");
-    this.scoreText = this.add.text(16, 16, `Score: ${0}`, {
-      fontSize: "32px",
-      fill: "#000",
-    });
-    this.add.text(16, 52, `Best score: ${bestScore || 0}`, {
-      fontSize: "18px",
-      fill: "#000",
-    });
+
+    this.scoreText = this.add
+      .text(16 * this.scaleMultiplier, 16 * this.scaleMultiplier, `Score: 0`, {
+        fontSize: `${32 * this.scaleMultiplier}px`,
+        fill: "#000",
+      })
+      .setOrigin(0);
+
+    this.add
+      .text(
+        16 * this.scaleMultiplier,
+        52 * this.scaleMultiplier,
+        `Best score: ${bestScore || 0}`,
+        {
+          fontSize: `${18 * this.scaleMultiplier}px`,
+          fill: "#000",
+        }
+      )
+      .setOrigin(0);
+
+    this._ui = { scoreText: this.scoreText };
   }
 
   handleInputs() {
@@ -144,8 +175,8 @@ class PlayScene extends BaseScene {
     this.recyclePipes();
   }
 
-  // Robust resume handler — resumes music and starts countdown
-  listenToEvents() {
+  // Pause logic unchanged
+  listenToEvents()  {
     if (this.pauseEvent) return;
 
     this.pauseEvent = this.events.on("resume", () => {
@@ -194,7 +225,7 @@ class PlayScene extends BaseScene {
     });
   }
 
-  countDown() {
+  countDown(){
     this.initialTime--;
     if (this.countDownText)
       this.countDownText.setText("Fly in: " + this.initialTime);
@@ -207,48 +238,39 @@ class PlayScene extends BaseScene {
   }
 
   createPause() {
-    this.isPaused = false;
     const pauseButton = this.add
-      .image(this.config.width - 10, this.config.height - 10, "pause")
-      .setScale(3)
+      .image(
+        this.config.width * this.scaleMultiplier - 10 * this.scaleMultiplier,
+        this.config.height * this.scaleMultiplier - 10 * this.scaleMultiplier,
+        "pause"
+      )
+      .setScale(3 * this.scaleMultiplier)
       .setOrigin(1)
       .setInteractive();
 
     pauseButton.on("pointerdown", () => {
       this.isPaused = true;
-
-      // Resume audio context if needed
       if (this.sound.context.state === "suspended") {
         this.sound.context.resume();
       }
-
-      // pause BG music
-      try {
-        if (this.bgMusic && this.bgMusic.isPlaying) {
-          this.bgMusic.pause();
-        }
-      } catch (e) {}
-
-      // pause scene and launch PauseScene with config so PauseScene knows sizes
+      if (this.bgMusic && this.bgMusic.isPlaying) {
+        this.bgMusic.pause();
+      }
       this.scene.pause();
       this.scene.launch("PauseScene", { config: this.config });
     });
+
+    this._ui.pauseButton = pauseButton;
   }
 
   checkGameStatus() {
-    //  Prevent crash if bird is null or destroyed
     if (!this.bird || !this.bird.active) return;
 
-    // flap control
-    if (this.spaceKey && this.spaceKey.isDown) {
-      this.flap();
-    }
+    if (this.spaceKey.isDown) this.flap();
 
-    // getBounds() ONLY after confirming bird exists
     const birdBounds = this.bird.getBounds();
-
-    // check ground / top collision
-    if (birdBounds.bottom >= this.config.height || birdBounds.top <= 0) {
+    if (birdBounds.bottom >= this.config.height * this.scaleMultiplier ||
+        birdBounds.top <= 0) {
       this.gameOver();
     }
   }
@@ -257,19 +279,18 @@ class PlayScene extends BaseScene {
     this.pipes = this.physics.add.group();
 
     for (let i = 0; i < PIPES_TO_RENDER; i++) {
-      const upperPipe = this.pipes
-        .create(0, 0, "pipe")
-        .setImmovable(true)
-        .setOrigin(0, 1);
-      const lowerPipe = this.pipes
-        .create(0, 0, "pipe")
-        .setImmovable(true)
-        .setOrigin(0, 0);
+      const upperPipe = this.pipes.create(0, 0, "pipe").setImmovable(true).setOrigin(0, 1);
+      const lowerPipe = this.pipes.create(0, 0, "pipe").setImmovable(true).setOrigin(0, 0);
+
+      upperPipe.setScale(this.scaleMultiplier);
+      lowerPipe.setScale(this.scaleMultiplier);
+      upperPipe.refreshBody();
+      lowerPipe.refreshBody();
 
       this.placePipe(upperPipe, lowerPipe);
     }
 
-    this.pipes.setVelocityX(-200);
+    this.pipes.setVelocityX(-200 * this.scaleMultiplier);
   }
 
   createCollectibles() {
@@ -318,43 +339,29 @@ class PlayScene extends BaseScene {
     );
   }
 
+
   placePipe(uPipe, lPipe) {
-    const difficulty = this.difficulties[this.currentDifficulty];
+    const diff = this.difficulties[this.currentDifficulty];
     const rightMostX = this.getRightMostPipe();
 
-    const pipeVerticalDistance = Phaser.Math.Between(
-      ...difficulty.pipeVerticalDistanceRange
-    );
-    const pipeVerticalPosition = Phaser.Math.Between(
-      20,
-      this.config.height - 20 - pipeVerticalDistance
+    const vDist = Phaser.Math.Between(...diff.pipeVerticalDistanceRange);
+    const vPos = Phaser.Math.Between(
+      20 * this.scaleMultiplier,
+      this.config.height * this.scaleMultiplier - 20 * this.scaleMultiplier - vDist
     );
 
-    const pipeHorizontalDistance = Phaser.Math.Between(
-      ...difficulty.pipeHorizontalDistanceRange
-    );
+    const hDist = Phaser.Math.Between(...diff.pipeHorizontalDistanceRange);
 
-    uPipe.x = rightMostX + pipeHorizontalDistance;
-    uPipe.y = pipeVerticalPosition;
+    uPipe.x = rightMostX + hDist;
+    uPipe.y = vPos;
 
     lPipe.x = uPipe.x;
-    lPipe.y = uPipe.y + pipeVerticalDistance;
+    lPipe.y = uPipe.y + vDist;
 
-    const gapCenterY = uPipe.y + pipeVerticalDistance / 2;
-    this.placeCollectible(uPipe.x + 50, gapCenterY);
+    const centerY = uPipe.y + vDist / 2;
+    this.placeCollectible(uPipe.x + 50 * this.scaleMultiplier, centerY);
   }
 
-  // placeCollectible(x, y) {
-  //   const randomLetter = Phaser.Utils.Array.GetRandom(this.collectibleTypes);
-
-  //   const collectible = this.collectibles
-  //     .create(x, y, randomLetter)
-  //     .setScale(0.12)
-  //     .setOrigin(0.5);
-
-  //   collectible.body.allowGravity = false;
-  //   collectible.body.velocity.x = -200;
-  // }
   placeCollectible(x, y) {
     // 🔥 If no letters left → stop creating collectibles
     if (this.collectibleTypes.length === 0) {
@@ -377,7 +384,8 @@ class PlayScene extends BaseScene {
     collectible.body.velocity.x = -200;
   }
 
-  recyclePipes() {
+
+  recyclePipes(){
     if (!this.collectibles || !this.pipes) return;
 
     this.collectibles.getChildren().forEach((c) => {
@@ -413,7 +421,7 @@ class PlayScene extends BaseScene {
     if (this.score === 3) this.currentDifficulty = "hard";
   }
 
-  saveBestScore() {
+  saveBestScore()  {
     const bestScoreText = localStorage.getItem("bestScore");
     const bestScore = bestScoreText && parseInt(bestScoreText, 10);
 
@@ -443,6 +451,7 @@ class PlayScene extends BaseScene {
     });
   }
 
+
   flap() {
     if (this.isPaused) return;
     this.bird.body.velocity.y = -this.flapVelocity;
@@ -450,8 +459,7 @@ class PlayScene extends BaseScene {
 
   increaseScore() {
     this.score++;
-    this.scoreText.setText(`Score: ${this.score}`);
-  }
+    this.scoreText.setText(`Score: ${this.score}`)}
 }
 
 export default PlayScene;

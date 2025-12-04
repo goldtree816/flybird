@@ -1,4 +1,3 @@
-
 import BaseScene from './BaseScene';
 
 
